@@ -1,11 +1,8 @@
 const Order = require("../models/Order");
 
 const getNextToken = async () => {
-  const lastOrder = await Order.findOne().sort({ tokenNumber: -1 });
-
-  if (!lastOrder || !lastOrder.tokenNumber) return 101;
-
-  return lastOrder.tokenNumber + 1;
+  const last = await Order.findOne().sort({ tokenNumber: -1 });
+  return last?.tokenNumber ? last.tokenNumber + 1 : 101;
 };
 
 exports.createOrder = async (req, res) => {
@@ -15,22 +12,17 @@ exports.createOrder = async (req, res) => {
     const order = await Order.create({
       customerName: req.body.customerName,
       phone: req.body.phone,
-      tableNumber: req.body.tableNumber,
+      tableNumber: req.body.tableNumber || "",
 
-      paymentMethod: req.body.paymentMethod || "Card",
+      paymentMethod: req.body.paymentMethod,
 
       items: req.body.items,
       totalAmount: req.body.totalAmount,
 
       tokenNumber: nextToken,
-
       status: "PENDING",
 
-      // 🔥 FIX: force correct enum
-      paymentStatus:
-        req.body.paymentStatus === "Paid"
-          ? "PAID"
-          : (req.body.paymentStatus || "PENDING").toUpperCase(),
+      paymentStatus: req.body.paymentStatus || "PENDING",
 
       stripeSessionId: req.body.stripeSessionId || null,
     });
