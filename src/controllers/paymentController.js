@@ -1,8 +1,13 @@
 const Stripe = require("stripe");
 
+// initialize once (IMPORTANT)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 exports.createCheckoutSession = async (req, res) => {
   try {
     const { items, customerName, phone, tableNumber } = req.body;
+
+    console.log("📦 Incoming items:", items);
 
     if (!items || !items.length) {
       return res.status(400).json({
@@ -11,7 +16,9 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("Missing STRIPE_SECRET_KEY");
+    }
 
     const line_items = items.map((item) => ({
       price_data: {
@@ -25,35 +32,22 @@ exports.createCheckoutSession = async (req, res) => {
       quantity: item.quantity,
     }));
 
+    console.log("💳 Line items:", line_items);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
-
       line_items,
 
-      // ✅ REQUIRED FOR INDIA EXPORT RULE
+      // safer approach
       customer_email: "test@example.com",
-
-      shipping_address_collection: {
-        allowed_countries: ["IN"],
-      },
-
-      shipping_options: [
-        {
-          shipping_rate_data: {
-            type: "fixed_amount",
-            fixed_amount: {
-              amount: 0,
-              currency: "inr",
-            },
-            display_name: "Delivery",
-          },
-        },
-      ],
 
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/checkout`,
     });
+
+    console.log("✅ Stripe Session Created:", session.id);
+    console.log("🔗 Stripe URL:", session.url);
 
     return res.json({
       success: true,
@@ -61,7 +55,7 @@ exports.createCheckoutSession = async (req, res) => {
     });
 
   } catch (error) {
-    console.log("Stripe Error:", error.message);
+    console.log("❌ Stripe Error Full:", error);
 
     return res.status(500).json({
       success: false,
