@@ -1,64 +1,47 @@
-require("dotenv").config(); // MUST BE FIRST
+require("dotenv").config();
+
+const http = require("http");
+const { Server } = require("socket.io");
 
 const app = require("./src/app");
 const mongoose = require("mongoose");
 
-// =========================
-// ENV VARIABLES
-// =========================
 const PORT = process.env.PORT || 5000;
 const MONGO_URL = process.env.MONGO_URL;
 
-// =========================
-// VALIDATION (FAIL FAST)
-// =========================
-if (!MONGO_URL) {
-  console.error("❌ MONGO_URL missing in .env");
-  process.exit(1);
-}
+const server = http.createServer(app);
 
-if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET missing in .env");
-  process.exit(1);
-}
+// 🔥 SOCKET.IO SETUP
+const io = new Server(server, {
+  cors: {
+    origin: "*", // later restrict to frontend domain
+    methods: ["GET", "POST", "PATCH"],
+  },
+});
 
-// =========================
-// DATABASE CONNECTION
-// =========================
-const connectDB = async () => {
-  try {
-    mongoose.set("strictQuery", true);
+// make io accessible everywhere
+global.io = io;
 
-    await mongoose.connect(MONGO_URL);
+// rooms = kitchen separation (optional upgrade)
+io.on("connection", (socket) => {
+  console.log("🟢 Connected:", socket.id);
 
-    console.log("✅ MongoDB Connected Successfully");
+  socket.on("join-kitchen", () => {
+    socket.join("kitchen-room");
+  });
 
-    // Start server ONLY after DB connection
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-    });
+  socket.on("disconnect", () => {
+    console.log("🔴 Disconnected:", socket.id);
+  });
+});
 
-  } catch (error) {
-    console.error("❌ MongoDB Connection Failed:");
-    console.error(error.message);
+const start = async () => {
+  await mongoose.connect(MONGO_URL);
+  console.log("MongoDB Connected");
 
-    process.exit(1);
-  }
+  server.listen(PORT, () =>
+    console.log("Server running on", PORT)
+  );
 };
 
-// =========================
-// HANDLE UNHANDLED ERRORS
-// =========================
-process.on("unhandledRejection", (err) => {
-  console.error("❌ Unhandled Promise Rejection:", err);
-});
-
-process.on("uncaughtException", (err) => {
-  console.error("❌ Uncaught Exception:", err);
-  process.exit(1);
-});
-
-// =========================
-// START SERVER
-// =========================
-connectDB();
+start();

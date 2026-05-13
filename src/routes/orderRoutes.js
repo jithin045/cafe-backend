@@ -7,21 +7,49 @@ const {
   updateStatus,
   getOrderById,
   getOrderByToken,
+  getOrderStats,
 } = require("../controllers/orderController");
 
-// 📦 create order
+const authMiddleware = require("../middleware/authMiddleware");
+const roleMiddleware = require("../middleware/roleMiddleware");
+
+
+// =========================
+// PUBLIC (CUSTOMER)
+// =========================
 router.post("/", createOrder);
 
-// 📦 get all orders
-router.get("/", getOrders);
 
-// 🔍 get order by id
+// =========================
+// PROTECTED (STAFF / ADMIN)
+// =========================
+router.get(
+  "/",
+  authMiddleware,
+  roleMiddleware("staff", "admin"),
+  getOrders
+);
+
+router.get(
+  "/stats",
+  authMiddleware,
+  roleMiddleware("admin"),
+  getOrderStats
+);
+
+router.patch(
+  "/:id",
+  authMiddleware,
+  roleMiddleware("staff", "admin"),
+  updateStatus
+);
+
+
+// =========================
+// PUBLIC TRACKING
+// =========================
 router.get("/:id", getOrderById);
 
-// 🔍 get order by token
 router.get("/token/:token", getOrderByToken);
-
-// 🔄 update status
-router.patch("/:id", updateStatus);
 
 module.exports = router;

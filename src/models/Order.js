@@ -42,7 +42,6 @@ const orderSchema = new mongoose.Schema(
       default: "PENDING",
     },
 
-    // 🔥 ADD THIS (VERY IMPORTANT FOR STRIPE)
     stripeSessionId: {
       type: String,
       default: null,
@@ -51,4 +50,5 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Order", orderSchema);
+// IMPORTANT FIX (prevents "find is not a function")
+module.exports = mongoose.models.Order || mongoose.model("Order", orderSchema);

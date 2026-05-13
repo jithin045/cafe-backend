@@ -1,45 +1,42 @@
 const Order = require("../models/Order");
 
+// =========================
+// TOKEN GENERATOR
+// =========================
 const getNextToken = async () => {
   const last = await Order.findOne().sort({ tokenNumber: -1 });
   return last?.tokenNumber ? last.tokenNumber + 1 : 101;
 };
 
+// =========================
+// CREATE ORDER (REALTIME)
+// =========================
 exports.createOrder = async (req, res) => {
   try {
-    const nextToken = await getNextToken();
-
     const order = await Order.create({
-      customerName: req.body.customerName,
-      phone: req.body.phone,
-      tableNumber: req.body.tableNumber || "",
-
-      paymentMethod: req.body.paymentMethod,
-
-      items: req.body.items,
-      totalAmount: req.body.totalAmount,
-
-      tokenNumber: nextToken,
+      ...req.body,
+      tokenNumber: await getNextToken(),
       status: "PENDING",
-
-      paymentStatus: req.body.paymentStatus || "PENDING",
-
-      stripeSessionId: req.body.stripeSessionId || null,
     });
+
+    // 🔥 REALTIME → KITCHEN
+    global.io.emit("new-order", order);
 
     return res.status(201).json({
       success: true,
       order,
     });
-
-  } catch (error) {
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
 
+// =========================
+// GET ALL ORDERS
+// =========================
 exports.getOrders = async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -48,14 +45,17 @@ exports.getOrders = async (req, res) => {
       success: true,
       orders,
     });
-  } catch (error) {
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
 
+// =========================
+// GET ORDER BY ID
+// =========================
 exports.getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -67,18 +67,18 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
-    return res.json({
-      success: true,
-      order,
-    });
-  } catch (error) {
+    return res.json({ success: true, order });
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
 
+// =========================
+// GET ORDER BY TOKEN
+// =========================
 exports.getOrderByToken = async (req, res) => {
   try {
     const order = await Order.findOne({
@@ -92,37 +92,86 @@ exports.getOrderByToken = async (req, res) => {
       });
     }
 
-    return res.json({
-      success: true,
-      order,
-    });
-  } catch (error) {
+    return res.json({ success: true, order });
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
 
+// =========================
+// UPDATE STATUS (REALTIME)
+// =========================
 exports.updateStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const allowed = ["PENDING", "PREPARING", "READY", "COMPLETED"];
+
+    if (!allowed.includes(req.body.status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+      });
+    }
 
     const order = await Order.findByIdAndUpdate(
       req.params.id,
-      { status },
+      { status: req.body.status },
       { new: true }
     );
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // 🔥 REALTIME UPDATE
+    global.io.emit("order-updated", order);
 
     return res.json({
       success: true,
       order,
     });
-
-  } catch (error) {
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
+    });
+  }
+};
+
+// =========================
+// STATS
+// =========================
+exports.getOrderStats = async (req, res) => {
+  try {
+    const stats = {
+      totalOrders: await Order.countDocuments(),
+      pendingOrders: await Order.countDocuments({ status: "PENDING" }),
+      preparingOrders: await Order.countDocuments({ status: "PREPARING" }),
+      readyOrders: await Order.countDocuments({ status: "READY" }),
+      completedOrders: await Order.countDocuments({ status: "COMPLETED" }),
+    };
+
+    const revenue = await Order.aggregate([
+      { $match: { paymentStatus: "PAID" } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
+
+    return res.json({
+      success: true,
+      stats: {
+        ...stats,
+        revenue: revenue[0]?.total || 0,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
     });
   }
 };
